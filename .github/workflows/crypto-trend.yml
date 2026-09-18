@@ -1,0 +1,41 @@
+name: Crypto Trend v1 daily check
+
+on:
+  schedule:
+    - cron: "5 0 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run the normal signal check or send an unmistakable Telegram test message"
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - telegram-test
+
+permissions:
+  contents: read
+
+jobs:
+  check-signals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run Telegram setup test
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'telegram-test'
+        run: npm run check-signals -- --mode=test
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Run daily trend check
+        if: github.event_name == 'schedule' || inputs.mode == 'check'
+        run: npm run check-signals
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
