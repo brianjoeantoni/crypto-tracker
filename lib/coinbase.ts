@@ -61,20 +61,43 @@ async function fetchChunk(
   url.searchParams.set("granularity", "86400");
   url.searchParams.set("start", new Date(start).toISOString());
   url.searchParams.set("end", new Date(end).toISOString());
-  let response: Response;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
-  try {
-    response = await fetchFn(url, { headers: { Accept: "application/json" }, signal: controller.signal });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+  let response: Response | undefined;
+  let lastError: unknown;
+  // Coinbase can occasionally return a transient bad-gateway 400 on a valid
+  // pagination window. Retry the individual window before failing closed.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+    try {
+      response = await fetchFn(url, {
+        headers: {
+          Accept: "application/json",
+          // Coinbase rejects Cloudflare Worker requests that omit this header.
+          "User-Agent": "crypto-tracker/1.0 (public market-data dashboard)",
+        },
+        signal: controller.signal,
+      });
+      if (response.ok) break;
+      const body = (await response.text()).replace(/\s+/g, ' ').slice(0, 240);
+      lastError = new CoinbaseDataError(
+        `Coinbase responded with HTTP ${response.status}${body ? `: ${body}` : ''} ` +
+          `(${new Date(start).toISOString()} to ${new Date(end).toISOString()}).`,
+      );
+      if (response.status !== 400 && response.status !== 429 && response.status < 500) break;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (attempt < 2) await new Promise<void>((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+  }
+  if (!response?.ok) {
+    if (lastError instanceof DOMException && lastError.name === "AbortError") {
       throw new CoinbaseDataError(`Coinbase request timed out after ${Math.round(requestTimeoutMs / 1000)} seconds.`);
     }
-    throw new CoinbaseDataError(`Coinbase request failed: ${error instanceof Error ? error.message : "unknown error"}`);
-  } finally {
-    clearTimeout(timeout);
+    if (lastError instanceof CoinbaseDataError) throw lastError;
+    throw new CoinbaseDataError(`Coinbase request failed: ${lastError instanceof Error ? lastError.message : "unknown error"}`);
   }
-  if (!response.ok) throw new CoinbaseDataError(`Coinbase responded with HTTP ${response.status}.`);
   let payload: unknown;
   try {
     payload = await response.json();

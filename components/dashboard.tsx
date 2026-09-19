@@ -53,6 +53,12 @@ function isChartRange(value: unknown): value is '6M' | '1Y' | '2Y' | 'ALL' {
   return value === '6M' || value === '1Y' || value === '2Y' || value === 'ALL';
 }
 
+function isHistoryFilter(
+  value: unknown,
+): value is 'All' | StrategyAsset {
+  return value === 'All' || isStrategyAsset(value);
+}
+
 function stateClass(state: TrendState) {
   return state === 'ON'
     ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
@@ -252,6 +258,7 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
     snapshots.find((snapshot) => snapshot.asset === asset) ?? null;
   const selectedSignal =
     allSignals.find((signal) => signal.id === selectedId) ?? null;
+
   return (
     <main className="min-h-screen bg-[#09111f] text-slate-100">
       <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
@@ -369,7 +376,12 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
               </div>
               <Tabs
                 value={filter}
-                onValueChange={(value) => setFilter(value as typeof filter)}
+                onValueChange={(value) => {
+                  if (isHistoryFilter(value)) {
+                    setFilter(value);
+                    setShowAll(false);
+                  }
+                }}
               >
                 <TabsList className="bg-slate-800">
                   <TabsTrigger value="All" className="px-2.5 text-xs">
