@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
+import { ThemeToggle } from '@/components/theme-toggle';
 import {
   calculateStrategyStatistics,
   pairCompletedTrends,
@@ -358,7 +359,7 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
     allSignals.find((signal) => signal.id === selectedId) ?? null;
 
   return (
-    <main className="min-h-screen bg-[#09111f] text-slate-100">
+    <main className="tracker-dashboard min-h-screen bg-[#09111f] text-slate-100">
       <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
         <header className="mb-8 flex flex-col gap-5 border-b border-slate-800 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -383,6 +384,7 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
               SMA150 · 3-close confirmation · Daily Coinbase candles
             </p>
           </div>
+          <ThemeToggle />
         </header>
         {failures.length > 0 && (
           <div className="mb-6 flex gap-3 rounded-xl border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">

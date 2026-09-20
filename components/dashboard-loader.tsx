@@ -39,10 +39,10 @@ export function DashboardLoader() {
 
   if (!data) {
     return (
-      <main className="min-h-screen bg-[#09111f] px-4 py-7 text-slate-100 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl rounded-xl border border-slate-800 bg-slate-900/75 p-6">
-          <h1 className="text-3xl font-semibold tracking-tight text-white">Crypto Tracker</h1>
-          <p className="mt-3 text-base text-slate-400">
+      <main className="min-h-screen bg-background px-4 py-7 text-foreground sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl rounded-xl border border-border bg-card p-6">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Crypto Tracker</h1>
+          <p className="mt-3 text-base text-muted-foreground">
             {error ?? 'Loading completed daily candles from Coinbase…'}
           </p>
           {error && (

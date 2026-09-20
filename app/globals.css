@@ -53,10 +53,10 @@ body {
 }
 
 :root {
-  --background: #09111f;
-  --foreground: #e7edf8;
-  --card: #101b2d;
-  --card-foreground: #e7edf8;
+  --background: #f4f7fb;
+  --foreground: #14213a;
+  --card: #ffffff;
+  --card-foreground: #14213a;
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
@@ -88,10 +88,10 @@ body {
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
+  --background: #09111f;
+  --foreground: #e7edf8;
+  --card: #101b2d;
+  --card-foreground: #e7edf8;
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
@@ -119,6 +119,42 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+.light .tracker-dashboard {
+  background-color: #f4f7fb;
+  color: #14213a;
+}
+
+.light .tracker-dashboard .bg-slate-900\/75,
+.light .tracker-dashboard .bg-slate-950\/40 {
+  background-color: rgb(255 255 255 / 0.88) !important;
+}
+
+.light .tracker-dashboard .bg-slate-800,
+.light .tracker-dashboard .bg-slate-800\/50,
+.light .tracker-dashboard .bg-slate-800\/60 {
+  background-color: #e8eef7 !important;
+}
+
+.light .tracker-dashboard .border-slate-800,
+.light .tracker-dashboard .border-slate-800\/70 {
+  border-color: #d5dfed !important;
+}
+
+.light .tracker-dashboard .text-white,
+.light .tracker-dashboard .text-slate-100,
+.light .tracker-dashboard .text-slate-200 {
+  color: #14213a !important;
+}
+
+.light .tracker-dashboard .text-slate-300 {
+  color: #30405b !important;
+}
+
+.light .tracker-dashboard .text-slate-400,
+.light .tracker-dashboard .text-slate-500 {
+  color: #65738b !important;
 }
 
 @layer base {
