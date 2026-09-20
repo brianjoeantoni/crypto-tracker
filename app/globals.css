@@ -157,6 +157,51 @@ body {
   color: #65738b !important;
 }
 
+/* Keep semantic status and alert content readable against light surfaces. */
+.light .tracker-dashboard .text-emerald-300 {
+  color: #047857 !important;
+}
+
+.light .tracker-dashboard .text-rose-300 {
+  color: #be123c !important;
+}
+
+.light .tracker-dashboard .text-amber-100,
+.light .tracker-dashboard .text-amber-100\/75,
+.light .tracker-dashboard .text-amber-200 {
+  color: #92400e !important;
+}
+
+.light .tracker-dashboard .text-indigo-300,
+.light .tracker-dashboard .hover\:text-indigo-200:hover {
+  color: #4f46e5 !important;
+}
+
+.light .tracker-dashboard .bg-emerald-400\/10 {
+  background-color: #ecfdf5 !important;
+}
+
+.light .tracker-dashboard .border-emerald-400\/30 {
+  border-color: #6ee7b7 !important;
+}
+
+.light .tracker-dashboard .bg-rose-400\/10 {
+  background-color: #fff1f2 !important;
+}
+
+.light .tracker-dashboard .border-rose-400\/30 {
+  border-color: #fda4af !important;
+}
+
+.light .tracker-dashboard .bg-amber-400\/10 {
+  background-color: #fffbeb !important;
+}
+
+.light .tracker-dashboard .border-amber-400\/25,
+.light .tracker-dashboard .border-amber-400\/30 {
+  border-color: #fcd34d !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
