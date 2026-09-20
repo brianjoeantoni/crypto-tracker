@@ -6,18 +6,17 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   Clock3,
 } from 'lucide-react';
 import { TrendChart } from '@/components/trend-chart';
+import { Navbar } from '@/components/navbar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
-import { ThemeToggle } from '@/components/theme-toggle';
 import {
   calculateStrategyStatistics,
   pairCompletedTrends,
@@ -361,31 +360,23 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
   return (
     <main className="tracker-dashboard min-h-screen bg-[#09111f] text-slate-100">
       <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
-        <header className="mb-8 flex flex-col gap-5 border-b border-slate-800 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="mb-2 flex items-center gap-2 text-sm font-medium text-indigo-300">
-              <BarChart3 className="size-4" /> Crypto Trend v1
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-white">
-              Crypto Tracker
-            </h1>
-            <p className="mt-2 text-base text-slate-400">
-              BTC & ETH trend-following monitor
-            </p>
-          </div>
-          <div className="text-sm text-slate-500">
+        <Navbar />
+        <section
+          aria-label="Market data status"
+          className="mb-8 flex flex-col gap-2 border-b border-slate-800 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
             <p className="flex items-center gap-2">
               <Clock3 className="size-4" /> Last updated{' '}
               {fetchedAt
                 ? `${new Date(fetchedAt).toLocaleString('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC`
                 : 'unavailable'}
             </p>
-            <p className="mt-2 text-xs">
+            <p className="text-xs">
               SMA150 · 3-close confirmation · Daily Coinbase candles
             </p>
           </div>
-          <ThemeToggle />
-        </header>
+        </section>
         {failures.length > 0 && (
           <div className="mb-6 flex gap-3 rounded-xl border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
             <AlertTriangle className="mt-0.5 size-5 shrink-0" />
