@@ -105,16 +105,22 @@ for the Cloudflare Worker request path.
 
 ## Dashboard behavior
 
-The browser loads the dashboard through one request to `GET /api/market-data`.
-This makes the request visible in the browser Network tab while keeping the
-Coinbase calls server-side. The endpoint:
+The dashboard loads public Coinbase candle history directly in the browser.
+The paginated Coinbase requests are therefore visible in the browser Network
+tab and use the visitor's network rather than Cloudflare's shared Worker
+egress. The browser loader retries a wholly unsuccessful load up to three
+times.
+
+`GET /api/market-data` remains available as a server-side programmatic route.
+It:
 
 - loads BTC and ETH one product at a time to avoid a burst of paginated
   Coinbase requests;
 - returns successful assets alongside a per-asset failure list;
 - coalesces simultaneous loads; and
 - keeps a successful two-asset response in an in-process cache for five
-  minutes. Its HTTP response is marked `Cache-Control: no-store`.
+  minutes. Complete snapshots are cacheable for one minute in a browser and
+  five minutes at the edge; partial-failure responses are `no-store`.
 
 The client retries the dashboard endpoint up to three times (with 500 ms and
 1,000 ms waits before the later attempts). A partial data failure is shown in
@@ -151,10 +157,9 @@ sizing.
 ```text
 Browser
   DashboardLoader
-    -> GET /api/market-data
-         -> Coinbase adapter (paginated daily candles)
-              -> shared calculateCryptoTrend() engine
-                   -> snapshots, signals, chart data, statistics
+    -> Coinbase adapter (paginated daily candles)
+         -> shared calculateCryptoTrend() engine
+              -> snapshots, signals, chart data, statistics
 
 GitHub Actions / local check script
   scripts/check-signals.ts
@@ -173,7 +178,7 @@ history; no database or persistent strategy-state store is used.
 | --- | --- |
 | [`app/page.tsx`](app/page.tsx) | Home route; renders the client data loader. |
 | [`app/api/market-data/route.ts`](app/api/market-data/route.ts) | Server endpoint, partial-failure handling, request coalescing, and five-minute module cache. |
-| [`components/dashboard-loader.tsx`](components/dashboard-loader.tsx) | Browser request/retry state for `/api/market-data`. |
+| [`components/dashboard-loader.tsx`](components/dashboard-loader.tsx) | Browser-side public Coinbase loading, retry state, and dashboard handoff. |
 | [`components/dashboard.tsx`](components/dashboard.tsx) | Dashboard cards, independent chart/history filters, signal details, and statistics UI. |
 | [`components/trend-chart.tsx`](components/trend-chart.tsx) | Client-only Lightweight Charts candlestick, SMA, marker, hover, and resize behavior. |
 | [`components/navbar.tsx`](components/navbar.tsx) | Dashboard navigation/header and theme control. |
@@ -219,9 +224,9 @@ npm run dev
 
 Vinext prints the local URL when it starts (normally `http://localhost:3000`).
 The dashboard uses Coinbase's public candles API and needs no API key. If the
-page reports market-data failures, inspect the request to `/api/market-data` in
-the browser Network tab and the terminal running Vinext; the detailed Coinbase
-requests are made by the server route, not directly by the browser.
+page reports market-data failures, inspect the paginated Coinbase requests in
+the browser Network tab. The browser-origin requests contain no credentials and
+depend on Coinbase continuing to allow CORS for its public candles endpoint.
 
 ### Production-like local Worker
 

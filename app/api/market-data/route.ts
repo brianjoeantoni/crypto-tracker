@@ -14,6 +14,7 @@ interface MarketDataResponse {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const EDGE_CACHE_CONTROL = 'public, max-age=60, s-maxage=300';
 let cached: MarketDataResponse | null = null;
 let inFlight: Promise<MarketDataResponse> | null = null;
 
@@ -43,7 +44,9 @@ async function loadMarketData(): Promise<MarketDataResponse> {
 export async function GET(): Promise<Response> {
   const now = Date.now();
   if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
-    return Response.json(cached, { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json(cached, {
+      headers: { 'Cache-Control': EDGE_CACHE_CONTROL },
+    });
   }
 
   inFlight ??= loadMarketData().finally(() => {
@@ -51,5 +54,14 @@ export async function GET(): Promise<Response> {
   });
   const data = await inFlight;
   if (data.snapshots.length === STRATEGY_ASSETS.length) cached = data;
-  return Response.json(data, { headers: { 'Cache-Control': 'no-store' } });
+  return Response.json(data, {
+    headers: {
+      // Cache only a complete, validated two-asset snapshot. Do not cache a
+      // transient Coinbase failure, so the next request can recover.
+      'Cache-Control':
+        data.snapshots.length === STRATEGY_ASSETS.length
+          ? EDGE_CACHE_CONTROL
+          : 'no-store',
+    },
+  });
 }

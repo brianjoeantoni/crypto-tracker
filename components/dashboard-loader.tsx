@@ -2,12 +2,41 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Dashboard } from '@/components/dashboard';
-import type { AssetFailure, AssetSnapshot } from '@/lib/types';
+import { fetchAssetSnapshot } from '@/lib/coinbase';
+import {
+  STRATEGY_ASSETS,
+  type AssetFailure,
+  type AssetSnapshot,
+} from '@/lib/types';
 
 interface MarketDataResponse {
   snapshots: AssetSnapshot[];
   failures: AssetFailure[];
   fetchedAt: number;
+}
+
+async function loadBrowserMarketData(): Promise<MarketDataResponse> {
+  const settled = await Promise.allSettled(
+    STRATEGY_ASSETS.map((asset) => fetchAssetSnapshot(asset)),
+  );
+  const snapshots: AssetSnapshot[] = [];
+  const failures: AssetFailure[] = [];
+
+  settled.forEach((item, index) => {
+    const asset = STRATEGY_ASSETS[index];
+    if (item.status === 'fulfilled') snapshots.push(item.value);
+    else {
+      failures.push({
+        asset,
+        message:
+          item.reason instanceof Error
+            ? item.reason.message
+            : 'Unknown Coinbase data error.',
+      });
+    }
+  });
+
+  return { snapshots, failures, fetchedAt: Date.now() };
 }
 
 export function DashboardLoader() {
@@ -18,11 +47,16 @@ export function DashboardLoader() {
     setError(null);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        const response = await fetch('/api/market-data', { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Dashboard data request failed with HTTP ${response.status}.`);
-        const nextData = (await response.json()) as MarketDataResponse;
-        setData(nextData);
-        return;
+        const nextData = await loadBrowserMarketData();
+        if (nextData.snapshots.length > 0 || attempt === 2) {
+          setData(nextData);
+          return;
+        }
+        throw new Error(
+          nextData.failures
+            .map((failure) => `${failure.asset}: ${failure.message}`)
+            .join(' '),
+        );
       } catch (requestError) {
         if (attempt === 2) {
           setError(requestError instanceof Error ? requestError.message : 'Unable to load market data.');

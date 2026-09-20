@@ -12,6 +12,11 @@ const EARLIEST_REQUEST_MS: Record<StrategyAsset, number> = {
 // Coinbase permits at most 300 returned buckets. Its start/end range is inclusive,
 // so a 300-day difference can yield 301 daily buckets; request 299 per window.
 const MAX_CANDLES_PER_REQUEST = 299;
+const COINBASE_CACHE_TTL_SECONDS = 24 * 60 * 60;
+const DEFAULT_REQUEST_INTERVAL_MS = 350;
+const DEFAULT_RETRY_BASE_DELAY_MS = 750;
+const MAX_RETRY_DELAY_MS = 15_000;
+let nextCoinbaseRequestAt = 0;
 
 export class CoinbaseDataError extends Error {
   constructor(message: string) {
@@ -27,12 +32,53 @@ export interface CoinbaseOptions {
   now?: number;
   startTimestamp?: number;
   requestTimeoutMs?: number;
+  /** Minimum gap between Coinbase requests in this runtime. */
+  requestIntervalMs?: number;
+  /** Base delay for retryable Coinbase responses. Useful as zero in unit tests. */
+  retryBaseDelayMs?: number;
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForCoinbaseRequestSlot(requestIntervalMs: number) {
+  if (requestIntervalMs <= 0) return;
+  const now = Date.now();
+  const wait = Math.max(0, nextCoinbaseRequestAt - now);
+  if (wait > 0) await delay(wait);
+  nextCoinbaseRequestAt = Date.now() + requestIntervalMs;
+}
+
+function retryDelay(response: Response | undefined, attempt: number, retryBaseDelayMs: number) {
+  const exponentialDelay = retryBaseDelayMs * 2 ** attempt;
+  const retryAfter = response?.headers.get("Retry-After");
+  if (!retryAfter) return exponentialDelay;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(MAX_RETRY_DELAY_MS, Math.max(exponentialDelay, seconds * 1000));
+  }
+
+  const retryAt = Date.parse(retryAfter);
+  if (Number.isNaN(retryAt)) return exponentialDelay;
+  return Math.min(MAX_RETRY_DELAY_MS, Math.max(exponentialDelay, retryAt - Date.now()));
 }
 
 function asFiniteNumber(value: unknown, name: string): number {
   const numberValue = typeof value === "number" || typeof value === "string" ? Number(value) : Number.NaN;
   if (!Number.isFinite(numberValue)) throw new CoinbaseDataError(`Coinbase candle ${name} is invalid.`);
   return numberValue;
+}
+
+function coinbaseHeaders(): HeadersInit {
+  const headers: HeadersInit = { Accept: "application/json" };
+  // Browsers forbid scripts from setting User-Agent. Cloudflare Workers need it
+  // for this endpoint, so keep it on server-side calls only.
+  if (typeof window === "undefined") {
+    headers["User-Agent"] = "crypto-tracker/1.0 (public market-data dashboard)";
+  }
+  return headers;
 }
 
 function parseCandle(value: unknown): DailyCandle {
@@ -56,6 +102,8 @@ async function fetchChunk(
   end: number,
   fetchFn: FetchLike,
   requestTimeoutMs: number,
+  requestIntervalMs: number,
+  retryBaseDelayMs: number,
 ): Promise<DailyCandle[]> {
   const url = new URL(`${COINBASE_ORIGIN}/products/${asset}/candles`);
   url.searchParams.set("granularity", "86400");
@@ -69,13 +117,20 @@ async function fetchChunk(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
+      await waitForCoinbaseRequestSlot(requestIntervalMs);
       response = await fetchFn(url, {
-        headers: {
-          Accept: "application/json",
-          // Coinbase rejects Cloudflare Worker requests that omit this header.
-          "User-Agent": "crypto-tracker/1.0 (public market-data dashboard)",
-        },
+        headers: coinbaseHeaders(),
         signal: controller.signal,
+        // Cloudflare caches each immutable historical window at the fetch layer.
+        // Node ignores this Workers-specific option, preserving local/test behavior.
+        cf: {
+          cacheEverything: true,
+          // Vinext marks dynamic server work as no-store. Cloudflare permits a
+          // status-specific TTL in that case, unlike the plain cacheTtl option.
+          cacheTtlByStatus: {
+            "200-299": COINBASE_CACHE_TTL_SECONDS,
+          },
+        },
       });
       if (response.ok) break;
       const body = (await response.text()).replace(/\s+/g, ' ').slice(0, 240);
@@ -89,7 +144,7 @@ async function fetchChunk(
     } finally {
       clearTimeout(timeout);
     }
-    if (attempt < 2) await new Promise<void>((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+    if (attempt < 2) await delay(retryDelay(response, attempt, retryBaseDelayMs));
   }
   if (!response?.ok) {
     if (lastError instanceof DOMException && lastError.name === "AbortError") {
@@ -116,13 +171,23 @@ export async function fetchHistoricalCandles(
   const fetchFn = options.fetchFn ?? fetch;
   const now = options.now ?? Date.now();
   const requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
+  const requestIntervalMs = options.requestIntervalMs ?? DEFAULT_REQUEST_INTERVAL_MS;
+  const retryBaseDelayMs = options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
   const startTimestamp = options.startTimestamp ?? EARLIEST_REQUEST_MS[asset];
   const todayStart = Math.floor(now / DAILY_INTERVAL_MS) * DAILY_INTERVAL_MS;
   const raw: DailyCandle[] = [];
 
   for (let start = startTimestamp; start <= todayStart; start += MAX_CANDLES_PER_REQUEST * DAILY_INTERVAL_MS) {
     const end = Math.min(start + MAX_CANDLES_PER_REQUEST * DAILY_INTERVAL_MS, todayStart + DAILY_INTERVAL_MS);
-    raw.push(...(await fetchChunk(asset, start, end, fetchFn, requestTimeoutMs)));
+    raw.push(...(await fetchChunk(
+      asset,
+      start,
+      end,
+      fetchFn,
+      requestTimeoutMs,
+      requestIntervalMs,
+      retryBaseDelayMs,
+    )));
   }
 
   raw.sort((left, right) => left.timestamp - right.timestamp);
