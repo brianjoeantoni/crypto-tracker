@@ -17,6 +17,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
+import {
+  calculateStrategyStatistics,
+  pairCompletedTrends,
+  type CompletedTrend,
+  type StrategyStatistics,
+} from '@/lib/trend-statistics';
 import type {
   AssetFailure,
   AssetSnapshot,
@@ -57,6 +63,14 @@ function isHistoryFilter(
   value: unknown,
 ): value is 'All' | StrategyAsset {
   return value === 'All' || isStrategyAsset(value);
+}
+
+function formatReturn(value: number | null) {
+  return value === null ? '—' : `${value >= 0 ? '+' : ''}${(value * 100).toFixed(2)}%`;
+}
+
+function formatRate(value: number | null) {
+  return value === null ? '—' : `${(value * 100).toFixed(2)}%`;
 }
 
 function stateClass(state: TrendState) {
@@ -166,7 +180,13 @@ function AssetCard({ snapshot }: { snapshot: AssetSnapshot }) {
   );
 }
 
-function SignalDetails({ signal }: { signal: SignalEvent | null }) {
+function SignalDetails({
+  signal,
+  completedTrend,
+}: {
+  signal: SignalEvent | null;
+  completedTrend: CompletedTrend | null;
+}) {
   if (!signal)
     return (
       <p className="py-10 text-center text-sm text-slate-500">
@@ -186,15 +206,46 @@ function SignalDetails({ signal }: { signal: SignalEvent | null }) {
         </div>
         <TrendStatus state={signal.state} />
       </div>
-      <div className="grid grid-cols-3 gap-3 text-sm">
+      <div className="grid grid-cols-2 gap-3 text-sm">
         <Metric label="Confirmed" value={date.format(signal.timestamp)} />
         <Metric label="Close" value={usd.format(signal.close)} />
+        <Metric label="SMA150" value={usd.format(signal.sma150)} />
         <Metric
           label="Distance"
           value={`${signal.distancePct >= 0 ? '+' : ''}${signal.distancePct.toFixed(2)}%`}
           positive={signal.distancePct >= 0}
         />
       </div>
+      {completedTrend ? (
+        <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">
+            Completed trend
+          </p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm">
+            <Metric
+              label="Entry signal"
+              value={`${date.format(completedTrend.entry.timestamp)} · ${usd.format(completedTrend.entry.close)}`}
+            />
+            <Metric
+              label="Exit signal"
+              value={`${date.format(completedTrend.exit.timestamp)} · ${usd.format(completedTrend.exit.close)}`}
+            />
+            <Metric
+              label="Signal return"
+              value={formatReturn(completedTrend.signalReturn)}
+              positive={completedTrend.signalReturn >= 0}
+            />
+            <Metric
+              label="Duration"
+              value={`${completedTrend.durationDays} days`}
+            />
+          </div>
+        </div>
+      ) : signal.state === 'ON' ? (
+        <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-400">
+          Trend started — no completed Signal Return yet.
+        </p>
+      ) : null}
       <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
         <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">
           Three-close confirmation
@@ -234,6 +285,36 @@ function SignalDetails({ signal }: { signal: SignalEvent | null }) {
   );
 }
 
+function StrategyStatisticsCard({
+  asset,
+  statistics,
+}: {
+  asset: StrategyAsset;
+  statistics: StrategyStatistics;
+}) {
+  return (
+    <Card className="border border-slate-800 bg-slate-900/75 shadow-none">
+      <CardHeader className="pb-1">
+        <CardTitle className="text-lg text-slate-100">
+          {asset.replace('-USD', '')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-x-5 gap-y-4 text-sm sm:grid-cols-4">
+          <Metric label="Completed trends" value={String(statistics.completedTrends)} />
+          <Metric label="Winning trends" value={String(statistics.winningTrends)} positive />
+          <Metric label="Losing trends" value={String(statistics.losingTrends)} positive={false} />
+          <Metric label="Win rate" value={formatRate(statistics.winRate)} positive={statistics.winRate === null ? undefined : statistics.winRate >= 0.5} />
+          <Metric label="Average winner" value={formatReturn(statistics.averageWinner)} positive={statistics.averageWinner === null ? undefined : true} />
+          <Metric label="Average loser" value={formatReturn(statistics.averageLoser)} positive={statistics.averageLoser === null ? undefined : false} />
+          <Metric label="Best trend" value={formatReturn(statistics.bestTrend)} positive={statistics.bestTrend === null ? undefined : statistics.bestTrend >= 0} />
+          <Metric label="Worst trend" value={formatReturn(statistics.worstTrend)} positive={statistics.worstTrend === null ? undefined : statistics.worstTrend >= 0} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
   const [asset, setAsset] = useState<StrategyAsset>(
     snapshots[0]?.asset ?? 'BTC-USD',
@@ -247,6 +328,23 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
         .flatMap((snapshot) => snapshot.result.signals)
         .sort((a, b) => b.timestamp - a.timestamp),
     [snapshots],
+  );
+  const completedTrends = useMemo(() => pairCompletedTrends(allSignals), [allSignals]);
+  const completedTrendByExitId = useMemo(
+    () => new Map(completedTrends.map((trend) => [trend.exit.id, trend])),
+    [completedTrends],
+  );
+  const statisticsByAsset = useMemo(
+    () =>
+      new Map(
+        (['BTC-USD', 'ETH-USD'] as const).map((asset) => [
+          asset,
+          calculateStrategyStatistics(
+            completedTrends.filter((trend) => trend.asset === asset),
+          ),
+        ]),
+      ),
+    [completedTrends],
   );
   const filteredSignals = allSignals.filter(
     (signal) => filter === 'All' || signal.asset === filter,
@@ -365,6 +463,28 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
             />
           </section>
         )}
+        <section className="mt-8" aria-labelledby="strategy-statistics-title">
+          <div className="mb-5">
+            <h2 id="strategy-statistics-title" className="text-xl font-semibold text-slate-100">
+              Strategy statistics
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Historical ON → OFF trends, measured using signal confirmation closes.
+            </p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            {(['BTC-USD', 'ETH-USD'] as const).map((asset) => (
+              <StrategyStatisticsCard
+                key={asset}
+                asset={asset}
+                statistics={statisticsByAsset.get(asset) ?? calculateStrategyStatistics([])}
+              />
+            ))}
+          </div>
+          <p className="mt-4 text-sm text-slate-500">
+            Crypto Trend v1 may produce frequent losing trends during sideways markets. The strategy is designed to participate in sustained trends, so win rate alone does not describe its historical behavior.
+          </p>
+        </section>
         <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]">
           <div className="rounded-xl border border-slate-800 bg-slate-900/75 p-4 sm:p-6">
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -404,7 +524,7 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
                   <th className="pb-3 font-medium">Date</th>
                   <th className="pb-3 font-medium">Close</th>
                   <th className="pb-3 font-medium">SMA150</th>
-                  <th className="pb-3 text-right font-medium">Distance</th>
+                  <th className="pb-3 text-right font-medium">Signal Return</th>
                 </tr>
               </thead>
               <tbody>
@@ -438,10 +558,11 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
                         {usd.format(signal.sma150)}
                       </td>
                       <td
-                        className={`py-3 text-right ${signal.distancePct >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+                        className={`py-3 text-right ${completedTrendByExitId.get(signal.id) ? completedTrendByExitId.get(signal.id)!.signalReturn >= 0 ? 'text-emerald-300' : 'text-rose-300' : 'text-slate-500'}`}
                       >
-                        {signal.distancePct >= 0 ? '+' : ''}
-                        {signal.distancePct.toFixed(2)}%
+                        {formatReturn(
+                          completedTrendByExitId.get(signal.id)?.signalReturn ?? null,
+                        )}
                       </td>
                     </tr>
                   ),
@@ -464,7 +585,14 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
             )}
           </div>
           <aside className="rounded-xl border border-slate-800 bg-slate-900/75 p-5">
-            <SignalDetails signal={selectedSignal} />
+            <SignalDetails
+              signal={selectedSignal}
+              completedTrend={
+                selectedSignal
+                  ? completedTrendByExitId.get(selectedSignal.id) ?? null
+                  : null
+              }
+            />
           </aside>
         </section>
         <footer className="mt-8 flex items-center gap-2 border-t border-slate-800 pt-5 text-xs text-slate-500">
