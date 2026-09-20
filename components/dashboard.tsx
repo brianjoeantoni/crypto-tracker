@@ -577,7 +577,7 @@ export function Dashboard({ snapshots, failures, fetchedAt }: DashboardProps) {
               </button>
             )}
           </div>
-          <aside className="rounded-xl border border-slate-800 bg-slate-900/75 p-5">
+          <aside className="rounded-xl border border-slate-800 bg-slate-900/75 p-5 lg:sticky lg:top-6 lg:h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto">
             <SignalDetails
               signal={selectedSignal}
               completedTrend={
